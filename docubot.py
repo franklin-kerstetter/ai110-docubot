@@ -9,6 +9,16 @@ Core DocuBot class responsible for:
 
 import os
 import glob
+import re
+
+STOPWORDS = {
+    "the", "a", "an", "and", "or", "is", "are", "was", "were",
+    "be", "been", "being", "to", "of", "in", "on", "at", "by",
+    "for", "with", "from", "up", "about", "as", "if", "it",
+    "that", "this", "these", "those", "which", "who", "what",
+    "when", "where", "why", "how", "all", "each", "every",
+    "both", "not", "no", "nor", "only", "same", "then", "just"
+}
 
 class DocuBot:
     def __init__(self, docs_folder="docs", llm_client=None):
@@ -45,26 +55,43 @@ class DocuBot:
         return docs
 
     # -----------------------------------------------------------
+    # Tokenization helpers
+    # -----------------------------------------------------------
+
+    def _tokenize_as_set(self, text):
+        """Extract tokens from text (lowercase, stopwords removed). Returns set."""
+        tokens = re.findall(r"\w+", text.lower())
+        return {t for t in tokens if t not in STOPWORDS}
+
+    def _tokenize_as_list(self, text):
+        """Extract tokens from text (lowercase, stopwords removed). Returns list."""
+        tokens = re.findall(r"\w+", text.lower())
+        return [t for t in tokens if t not in STOPWORDS]
+
+    # -----------------------------------------------------------
     # Index Construction (Phase 1)
     # -----------------------------------------------------------
 
     def build_index(self, documents):
         """
-        TODO (Phase 1):
-        Build a tiny inverted index mapping lowercase words to the documents
+        Build an inverted index mapping lowercase words to the documents
         they appear in.
 
         Example structure:
         {
-            "token": ["AUTH.md", "API_REFERENCE.md"],
-            "database": ["DATABASE.md"]
+            "token": {"AUTH.md", "API_REFERENCE.md"},
+            "database": {"DATABASE.md"}
         }
 
-        Keep this simple: split on whitespace, lowercase tokens,
-        ignore punctuation if needed.
+        Tokenizes on word boundaries, lowercases, filters stopwords.
         """
         index = {}
-        # TODO: implement simple indexing
+        for filename, text in documents:
+            tokens = self._tokenize_as_set(text)
+            for token in tokens:
+                if token not in index:
+                    index[token] = set()
+                index[token].add(filename)
         return index
 
     # -----------------------------------------------------------
@@ -73,27 +100,41 @@ class DocuBot:
 
     def score_document(self, query, text):
         """
-        TODO (Phase 1):
         Return a simple relevance score for how well the text matches the query.
 
-        Suggested baseline:
-        - Convert query into lowercase words
-        - Count how many appear in the text
-        - Return the count as the score
+        Count total occurrences of query tokens in text token list.
+        Higher count = higher relevance.
         """
-        # TODO: implement scoring
-        return 0
+        query_tokens = self._tokenize_as_set(query)
+        text_tokens = self._tokenize_as_list(text)
+        score = sum(1 for token in text_tokens if token in query_tokens)
+        return score
 
     def retrieve(self, query, top_k=3):
         """
-        TODO (Phase 1):
         Use the index and scoring function to select top_k relevant document snippets.
 
+        Tokenize query, find candidate docs from index, score each, sort descending.
         Return a list of (filename, text) sorted by score descending.
         """
-        results = []
-        # TODO: implement retrieval logic
-        return results[:top_k]
+        query_tokens = self._tokenize_as_set(query)
+
+        if not query_tokens:
+            return []
+
+        candidate_files = set()
+        for token in query_tokens:
+            if token in self.index:
+                candidate_files.update(self.index[token])
+
+        scored_docs = []
+        for filename, text in self.documents:
+            if filename in candidate_files:
+                score = self.score_document(query, text)
+                scored_docs.append((score, filename, text))
+
+        scored_docs.sort(reverse=True, key=lambda x: x[0])
+        return [(filename, text) for _, filename, text in scored_docs[:top_k]]
 
     # -----------------------------------------------------------
     # Answering Modes
