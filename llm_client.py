@@ -13,7 +13,7 @@ Experiment with:
 """
 
 import os
-from google import genai
+import google.genai as genai
 
 # Central place to update the model name if needed.
 # You can swap this for a different Gemini model in the future.
